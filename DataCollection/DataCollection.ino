@@ -10,7 +10,10 @@
    Have LED when device takes data
    Have timer set on a turn knob, so you can change it on the fly - DONE
    Setup SD card to create two different files (GPS/Enviro) - DONE
-   
+   Create a calibration method for the potentiometer (min and max values change sometimes) for map() to be correct
+   Have small display to show what the timer is at in minutes
+   Implement reset button in case of breakage; Have LED that says so
+
 */
 
 #include <SD.h>     //Needed to write to a SD card
@@ -24,23 +27,24 @@ const int BME680_MOSI = 18;   //Pin for enviro sensor data transfer
 const int CHIPSELECT = 10;    //Pin for slave's chip
 const int SEALEVELPRESSURE_HPA = 1028.1;    //Sea level pressure at DCA on 2/27/17 at 4pm
 const int POTENTIOMETERINPUT = A9;   //Pin for timer changer
-const int pMin = 2;
-const int pMax = 1023;
+const int pMin = 18;     //Min value of potentiometer (Might change with calibration method)
+const int pMax = 983;    //Max value of potentiometer(Might change with calibration method)
 
 char *eFileName = "eFile.txt";
 char *gpsFileName = "GPSFile.txt";
-int dataTimer = 0;     //Starting 1 second timer for data taking
-int potentiometer = 0;
-bool isWalking = true;
+int dataTimer = 0;
+int ledTimer = 0;
+bool isWalking = true;    //Will be connected to a switch
 
-int led = 2;
-int count = 0;
+int led = 2;//Bound to change
+int count = 0;//Debugging
 
 File gpsFile;
 File eFile;
 
 Adafruit_BME680 bme;
 
+//------------------------------------------------------------------------------------------------
 void setup() {
   /*Setup Serial to print out debug data
     Comment out when done debugging*/
@@ -51,7 +55,7 @@ void setup() {
   /*Check if the envriomental card is plugged in*/
   if (!bme.begin()) {
     Serial.println("Initialization of Enviromental card failed");
-    //HAVE LED LIGHT UP
+    //TODO: HAVE LED LIGHT UP
     return;
   } else {
     Serial.println("No Error with BME680");
@@ -59,7 +63,7 @@ void setup() {
   /*Check if the SD card is plugged in*/
   if (!SD.begin(CHIPSELECT)) {
     Serial.println("Initialization of SD card failed");
-    //HAVE LED LIGHT UP
+    //TODO: HAVE LED LIGHT UP
     return;
   } else {
     Serial.println("No Error with SD");
@@ -72,51 +76,60 @@ void setup() {
   bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
   bme.setGasHeater(320, 150);
 
-  //SETUP PIN MODES
+  /*Pin setup for LEDS*/
   pinMode(led, OUTPUT);
-}//ENDSETUP
+}//END setup()
 
 //------------------------------------------------------------------------------------------------
 void loop() {
-  unsigned long currentMillis = millis();
+  unsigned long currentMillis = millis(); //Resets every loop for updated time
 
-  potentReading();
+  int potentiometerReading = potentReading(POTENTIOMETERINPUT);   //Reads in the input from potentiometer
 
-  if (currentMillis - dataTimer > potentiometer) {
-    digitalWrite(led, HIGH);
-    delay(1000);
-    digitalWrite(led, LOW);
-    dataTimer = currentMillis;
+  if (currentMillis - dataTimer > potentiometerReading) {  //Checks to see if the potentiometerReading amount of time has passed
+    dataTimer = currentMillis;    //First reassign dataTimer
+    digitalWrite(led, HIGH);//Debugging
+    delay(500);//Keeping since the min time between important stuff is 60000 milliseconds
+    digitalWrite(led, LOW);//Debugging
+
     /*Read switch to check if driving or walking */
-    if (isWalking) {
-      if (count < 3) {
+    /* Uncomment after timer works properly */
+      if (isWalking) {
         openSDCard(eFile, eFileName, 0);
         eFile.println(getReadings());
         closeSDCard(eFile);
         count++;
       }
-    }
-    if (!isWalking) {
+      if (!isWalking) {
       openSDCard(gpsFile, gpsFileName, 1);
       //Take/write gps data
       closeSDCard(gpsFile);
-    }
-  }
-}
+      }
 
+  }//END timer loop
+}//END loop()
+
+//------------------------------------------------------------------------------------------------
 /**
-   potentiometer; soo tired
+   A quick method that reads the input of the potentiometer than maps those values from 6 - 180 milliseconds.
+   The returned number is then multipled by 10000 to give a number between 60000 - 1800000 milliseconds or 1 - 30 minutes.
+   @Param: inputPin - int; Pin attached the potentiometer
+   @Return: value - int; Mapped value of the potentiometer in milliseconds
 */
-void potentReading() {
-  potentiometer = analogRead(POTENTIOMETERINPUT);  //Low 2 miliseconds - High 1023 miliseconds
-  Serial.println(potentiometer);
-  potentiometer = (map(potentiometer, pMin, pMax, 6, 180)) * 10000; //Maps the values from 1 minutes to 30 minutes
-  
-}
+int potentReading(int inputPin) {
+  int value = 0;
+  value = analogRead(inputPin);  //Low 2 miliseconds - High 1023 miliseconds
+  //Serial.println(value);//Debugging
+  value = (map(value, pMin, pMax, 6, 180));
+  //Serial.print((value * 10000)); Serial.println(" milliseconds");//Debugging
+  value = value * 10000;
+  return value;
+}//END potentReading()
 
+//------------------------------------------------------------------------------------------------
 /**
-   Opens the SD card so data can be written to it
-
+   Opens or creates a file with the given name for writing.
+   Assigns that file to the directed File variable (eFile or gpsFile), depending on the parameter.
    @Param: file - File; Which file is going to be opened
    @Param: fileName - char*; The name of the file to be opened
    @Param: fileChoice - int; Since open() returns a File variable which will be lost at the end of the method
@@ -132,26 +145,29 @@ void openSDCard(File file, char *fileName, int fileChoice) {
   } else {
     Serial.println("NOOOOO PLEASE");
   }
-  /*Uncomment code when done debugging
-    if (file) {
-    Serial.println("No error in opening ");
-    } else {
-    Serial.println("Error opening ");
-    }*/
-}
+  //Debugging
+  //if (file) {
+  //Serial.println("No error in opening ");
+  //} else {
+  //Serial.println("Error opening ");
+  //}
+}//END openSDCard()
 
+//------------------------------------------------------------------------------------------------
 /**
-   Closes the directed SD card
+   Closes the the File that is currently open
    @Param: file - File; The file that is wanted to be opened
    @Return: None
 */
 void closeSDCard(File file) {
   file.close();
-}
+}//END closeSDCard
 
+//------------------------------------------------------------------------------------------------
 /**
-   COUNTER TO KNOW WHICH READING WE ARE AT
-
+   TODO: COUNTER TO KNOW WHICH READING WE ARE AT
+       : Steal GPS' time stamp
+       : Have driving data be only pressure and alititude
    Takes the environmental data and places it in a string with commas seperating the data
    Tempature(*C), Barometric Pressure (in/Mg), Humidity(%), Gas/VOC(KOhms), Altitude(m)
    @Param: None
@@ -173,12 +189,14 @@ String getReadings() {
   concatString.concat(bme.gas_resistance / 1000.0);
   concatString.concat(",");
   concatString.concat(bme.readAltitude(SEALEVELPRESSURE_HPA));
-  Serial.println(concatString);
+  Serial.println(concatString);//Debugging
   return concatString;
-}
+}//END getReadings()
+
+//------------------------------------------------------------------------------------------------
 /**
    Testing and debugging for the BME680 breakout.
-   Prints out the specific data
+   Prints out the specific data in a nice little format
    @Param: None
    @Return: None
 */
@@ -191,27 +209,22 @@ void testBME() {
   Serial.print("Temperature = ");
   Serial.print(bme.temperature);
   Serial.println(" *C");
-
   /*Prints out the current barometric tempature in in/Mg*/
   Serial.print("Pressure = ");
   Serial.print(bme.pressure / 3386.39);
   Serial.println(" hPa");
-
   /*Prints out the current humidity in percent*/
   Serial.print("Humidity = ");
   Serial.print(bme.humidity);
   Serial.println(" %");
-
   /*Prints out the Volatile Organic Compounds in Ohms; High VOC means lower resistance*/
   Serial.print("Gas = ");
   Serial.print(bme.gas_resistance / 1000.0);
   Serial.println(" KOhms");
-
   /*Prints out the altitudein meters, without current sea level pressure, can be off by 10m*/
   Serial.print("Approx. Altitude = ");
   Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
   Serial.println(" m");
-
   Serial.println();
   delay(2000);
-}
+}//END testBME()
