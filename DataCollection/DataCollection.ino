@@ -13,14 +13,19 @@
    Create a calibration method for the potentiometer (min and max values change sometimes) for map() to be correct
    Have small display to show what the timer is at in minutes
    Implement reset button in case of breakage; Have LED that says so
-
+   Cut +5V trace on back of board to prevent power lose from unused USB port
+   Add two 1N5817 Diodes, this will prevent drain on batteries when plugged in from USB
+   Power Stuff
+      Real Time Clock for wake-up
+      Low Power Timer
+   Watchdog Timer - incase of system failure
 */
 
 #include <SD.h>     //Needed to write to a SD card
 #include <Wire.h>   //Needed to communicate between devices with I2C
 #include <SPI.h>    //Needed to communicate between device with SPI
 #include <Adafruit_BME680.h>
-//#include <TimerOne.h>
+#include <avr/sleep.h>
 
 const int BME680_SCK = 19;    //Pin for enviro sensor clock
 const int BME680_MOSI = 18;   //Pin for enviro sensor data transfer
@@ -77,7 +82,7 @@ void setup() {
   bme.setGasHeater(320, 150);
 
   /*Pin setup for LEDS*/
-  pinMode(led, OUTPUT);
+  configurePins();  //Sets all pins to output, expect ones in use
 }//END setup()
 
 //------------------------------------------------------------------------------------------------
@@ -98,7 +103,7 @@ void loop() {
         openSDCard(eFile, eFileName, 0);
         eFile.println(getReadings());
         closeSDCard(eFile);
-        count++;
+        //count++;
       }
       if (!isWalking) {
       openSDCard(gpsFile, gpsFileName, 1);
@@ -163,6 +168,27 @@ void closeSDCard(File file) {
   file.close();
 }//END closeSDCard
 
+//------------------------------------------------------------------------------------------------
+/**
+ * Power Saving
+ * Setting all pins to output. Keep a list of all input LED pins in use
+ * - Pin 23
+ * @Param: None
+ * @Return: None
+ */
+ void configurePins(){
+  for (int i = 0; i < 23; i++){
+    pinMode(i, OUTPUT);
+  }
+ }//END configurePins
+
+ /**
+  * Power Saving
+  * Turns off ADC, turns off Serial, sleeps CPU when not needed
+  */
+  void powerSaving(){
+    
+  }
 //------------------------------------------------------------------------------------------------
 /**
    TODO: COUNTER TO KNOW WHICH READING WE ARE AT
