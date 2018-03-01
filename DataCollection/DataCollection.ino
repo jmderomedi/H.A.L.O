@@ -25,20 +25,20 @@
    Have SD be able to be pulled out and put back in without power cycling or error writing - DONE
 */
 
-#include <SD.h>     //Needed to write to a SD card
-#include <Wire.h>   //Needed to communicate between devices with I2C
-#include <SPI.h>    //Needed to communicate between device with SPI
+#include <SD.h>                           //Needed to write to a SD card
+#include <Wire.h>                         //Needed to communicate between devices with I2C
+#include <SPI.h>                          //Needed to communicate between device with SPI
 #include <Adafruit_BME680.h>
 #include <Snooze.h>
 
-const int BME680_SCK = 19;    //Pin for enviro sensor clock
-const int BME680_MOSI = 18;   //Pin for enviro sensor data transfer
-const int CHIPSELECT = 10;    //Pin for slave's chip
-const int SEALEVELPRESSURE_HPA = 1028.1;    //Sea level pressure at DCA on 2/27/17 at 4pm
-const int POTENTIOMETERINPUT = A9;   //Pin for timer changer
+const int BME680_SCK = 19;                //Pin for enviro sensor clock
+const int BME680_MOSI = 18;               //Pin for enviro sensor data transfer
+const int CHIPSELECT = 10;                //Pin for slave's chip
+const int SEALEVELPRESSURE_HPA = 1028.1;  //Sea level pressure at DCA on 2/27/17 at 4pm
+const int POTENTIOMETERINPUT = A9;        //Pin for timer changer
 
-int pMin = 5000;    //Setting original Min high so it can be brought down
-int pMax = 0;     //Settng original Max low so it can be brought up
+int pMin = 5000;                          //Setting original Min high so it can be brought down
+int pMax = 0;                             //Settng original Max low so it can be brought up
 
 char *eFileName = "eFile.txt";
 char *gpsFileName = "GPSFile.txt";
@@ -46,7 +46,7 @@ char *gpsFileName = "GPSFile.txt";
 int dataTimer = 0;
 int ledTimer = 0;
 
-bool isWalking = true;    //TODO: connect to a switch
+bool isWalking = true;                    //TODO: connect to a switch
 bool chipInitialized;
 bool previousChipState = false;
 bool calibrateFlag = false;
@@ -72,19 +72,18 @@ Adafruit_BME680 bme;
 void setup() {
   //Comment out when done debugging
   //Serial.begin (9600);
- // while (!Serial) {
+  // while (!Serial) {
   //  delay(1);
   //}
 
   /*Pin setup for LEDS*/
   pinMode(dataCollectLed, OUTPUT);
   pinMode(calibrateLED, OUTPUT);
-  pinMode(chipInput, INPUT_PULLUP); //Used to know when a SD in plugged into the device
+  pinMode(chipInput, INPUT_PULLUP);       //Used to know when a SD in plugged into the device
   pinMode(noChipLed, OUTPUT);
 
   /*Check if the envriomental card is plugged in*/
   if (!bme.begin()) {
-    //Serial.println("Initialization of Enviromental card failed");
     //TODO: HAVE LED LIGHT UP
     //Reset the program??
     digitalWrite(noChipLed, HIGH);
@@ -111,7 +110,6 @@ void setup() {
   bme.setPressureOversampling(BME680_OS_4X);
   bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
   bme.setGasHeater(320, 150);
-
 
 }//END setup()
 
