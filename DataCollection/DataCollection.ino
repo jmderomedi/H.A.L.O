@@ -10,7 +10,7 @@
    Have LED when device takes data - DONE
    Have timer set on a turn knob, so you can change it on the fly - DONE
    Setup SD card to create two different files (GPS/Enviro) - DONE
-   Create a calibration method for the potentiometer (min and max values change sometimes) for map() to be correct
+   Create a calibration method for the potentiometer (min and max values change sometimes) for map() to be correct -DONE
    Have small display to show what the timer is at in minutes
    Implement reset button in case of breakage; Have LED that says so
    Cut +5V trace on back of board to prevent power lose from unused USB port
@@ -22,6 +22,7 @@
       -Capital letters
       -Check comments
       -Clear out unused items
+   Have SD be able to be pulled out and put back in without power cycling or error writing - DONE
 */
 
 #include <SD.h>     //Needed to write to a SD card
@@ -46,7 +47,8 @@ int dataTimer = 0;
 int ledTimer = 0;
 
 bool isWalking = true;    //TODO: connect to a switch
-bool chipInserted;
+bool chipInitialized;
+bool previousChipState = false;
 bool calibrateFlag = false;
 
 /* Pins for the LEDS
@@ -68,12 +70,12 @@ Adafruit_BME680 bme;
 
 //------------------------------------------------------------------------------------------------
 void setup() {
-    //Comment out when done debugging
-    Serial.begin (9600);
-    while (!Serial) {
-    delay(1);
-    }
-    
+  //Comment out when done debugging
+  //Serial.begin (9600);
+ // while (!Serial) {
+  //  delay(1);
+  //}
+
   /*Pin setup for LEDS*/
   pinMode(dataCollectLed, OUTPUT);
   pinMode(calibrateLED, OUTPUT);
@@ -92,17 +94,17 @@ void setup() {
   }
 
   /*Check if the SD card is plugged in, if not set flag to false, if it is set initalize and set flag*/
-    if(!SD.begin(CHIPSELECT)){
-      //Didn't intialize
-      //Should restart??
-      digitalWrite(noChipLed, HIGH);
-      Serial.println("NO SD");
-      chipInserted = false;
-    } else {
-      chipInserted = true;
-      digitalWrite(noChipLed, LOW);
-    }
-    
+  if (!SD.begin(CHIPSELECT)) {
+    //Should restart??
+    digitalWrite(noChipLed, HIGH);
+    //Serial.println("NO SD in setup initalization");
+    chipInitialized = false;
+  } else {
+    chipInitialized = true;
+    digitalWrite(noChipLed, LOW);
+    //Serial.println("YES SD in setup initalization");
+  }
+
   /*Setup oversampling and filter initialization*/
   bme.setTemperatureOversampling(BME680_OS_8X);
   bme.setHumidityOversampling(BME680_OS_2X);
@@ -110,72 +112,82 @@ void setup() {
   bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
   bme.setGasHeater(320, 150);
 
-  
+
 }//END setup()
 
 //------------------------------------------------------------------------------------------------
 void loop() {
+
   /*Calibrates the potentiometer to always get accurate mappings and minutes between wake ups */
-  if (calibrateFlag) {
-    calibration();    
+  if (!calibrateFlag) {
+    calibration();
   }
-  
+
   /* Checks if the SD card is removed or newly added*/
   sdChipInit();
 
-  /* Gets time between readings/wake ups and puts the device asleep for that time 
-   * uses Low Power Timer to keep track of milliseconds that have passed */
-  //timer.setTimer(potentReading(POTENTIOMETERINPUT));  
-  //int who = Snooze.deepSleep(config);
+  /* Gets time between readings/wake ups and puts the device asleep for that time
+     uses Low Power Timer to keep track of milliseconds that have passed */
+  timer.setTimer(potentReading(POTENTIOMETERINPUT));
+  int who = Snooze.deepSleep(config);
 
   /* Start of data collection */
-  digitalWrite(dataCollectLed, HIGH); 
+  digitalWrite(dataCollectLed, HIGH);
 
   /* TODO: Implement Hardware Switch and read in its value */
   if (isWalking) {
-    openSDCard(eFile, eFileName, 0);
-    eFile.println(getReadings());
-    //TAKE GPS DATA
-    closeSDCard(eFile);
+    if (chipInitialized) {
+      openSDCard(eFile, eFileName, 0);
+      eFile.println(getReadings());
+      //TAKE GPS DATA
+      closeSDCard(eFile);
+    } else {
+      //CHIP NOT INITIALIZED DO SOMETHING
+    }
   }
   if (!isWalking) {
-    openSDCard(gpsFile, gpsFileName, 1);
-    //TAKE GPS DATA
-    closeSDCard(gpsFile);
+    if (chipInitialized) {
+      openSDCard(gpsFile, gpsFileName, 1);
+      //TAKE GPS DATA
+      closeSDCard(gpsFile);
+    } else {
+      //CHIP NOT INITIALIZED DO SOMETHING
+    }
   }
 
   /* End of data collection */
   digitalWrite(dataCollectLed, LOW); //Turns off when done taking data
-  
+
 }//END loop()
 
 //------------------------------------------------------------------------------------------------
 /**
- * Chip Initalization
- * This will the chip to be taken out and plugged back in without stopping the program or having errors
- * with multiple intializations
- * Currently if the chip is not plugged in, the program will run as normal but not be able to write anything
- * @PARAM: NONE
- * @RETURN: NONE
- */
- void sdChipInit(){
-  if(digitalRead(chipInput) == HIGH && chipInserted == false){ //If chip is plugged in and it not initialized
+   Chip Initalization
+   This will the chip to be taken out and plugged back in without stopping the program or having errors
+   with multiple intializations
+   Currently if the chip is not plugged in, the program will run as normal but not be able to write anything
+   @PARAM: NONE
+   @RETURN: NONE
+*/
+void sdChipInit() {
+  if (digitalRead(chipInput) == HIGH && chipInitialized == false) { //If chip is plugged in and it not initialized
     SD.begin(CHIPSELECT);   //Initalize the 'new' chip
-    chipInserted = true;    //Set chipInserted to now true
+    chipInitialized = true;    //Set chipInitialized to now true
     digitalWrite(noChipLed, LOW);
-  } 
-  else if (digitalRead(chipInput) == HIGH) { //If the chip is not plugged in
-    chipInserted = false;     
+    //Serial.println("Chip is plugged in and not initialized.\n"); //Debugging
+  }
+  else if (digitalRead(chipInput) == LOW) { //If the chip is not plugged in
+    chipInitialized = false;
     digitalWrite(noChipLed, HIGH);
-    Serial.println("NO SD");
-  } 
+    //Serial.println("NO SD in sdChipINIT()\n");
+  }
   else {    //Chip is plugged in and is initialized
     digitalWrite(noChipLed, LOW);
-    
+    //Serial.println("Chip is plugged in and is inialized\n");
   }
-  
- }//END sdChipInit()
- 
+
+}//END sdChipInit()
+
 //------------------------------------------------------------------------------------------------
 /**
    Calibration of the potentiometer
@@ -186,11 +198,12 @@ void loop() {
    @Return: None
 */
 void calibration() {
-  int calibrationTime = 30000;   //Have 4 seconds to calibrate once the light appears
+  int calibrationTime = 10000;   //Have 4 seconds to calibrate once the light appears
   int temp = 0;
   unsigned long currentMillis = millis();
   while (millis() < currentMillis + calibrationTime) {
     digitalWrite(calibrateLED, HIGH);     //Turn on LED at start of calibration
+    digitalWrite(dataCollectLed, HIGH);
     temp = analogRead(POTENTIOMETERINPUT);
     if (temp > pMax) {
       pMax = temp;
@@ -200,8 +213,9 @@ void calibration() {
     }
   }//END while
   digitalWrite(calibrateLED, LOW);
+  digitalWrite(dataCollectLed,HIGH);
   calibrateFlag = true;   //Set flag so it can only happen once
-  
+
 }//END calibration()
 
 //------------------------------------------------------------------------------------------------
@@ -216,10 +230,10 @@ int potentReading(int inputPin) {
   value = analogRead(inputPin);  //Low 2 miliseconds - High 1023 miliseconds
   //Serial.println(value);//Debugging
   value = (map(value, pMin, pMax, 6, 180));
-  Serial.print((value * 1000)); Serial.println(" milliseconds");//Debugging
-  value = value * 1000;
+  //Serial.print((value * 1000)); Serial.println(" milliseconds");//Debugging
+  value = value * 100;
   return value;
-  
+
 }//END potentReading()
 
 //------------------------------------------------------------------------------------------------
@@ -239,7 +253,7 @@ void openSDCard(File file, char *fileName, int fileChoice) {
   } else if (fileChoice == 1) { //GPS data file
     gpsFile = file;
   }
-  
+
 }//END openSDCard()
 
 //------------------------------------------------------------------------------------------------
@@ -250,7 +264,7 @@ void openSDCard(File file, char *fileName, int fileChoice) {
 */
 void closeSDCard(File file) {
   file.close();
-  
+
 }//END closeSDCard
 
 //------------------------------------------------------------------------------------------------
@@ -280,9 +294,22 @@ String getReadings() {
   concatString.concat(", ");
   concatString.concat(bme.readAltitude(SEALEVELPRESSURE_HPA));
   return concatString;
-  
+
 }//END getReadings()
 
+/**
+   Test Method
+*/
+void test() {
+  delay(500);
+  Serial.print("Sd card plugged in: "); Serial.println(digitalRead(chipInput));
+  Serial.print("Sd card initalized: "); Serial.println(chipInitialized);
+  Serial.print("Pmax of potentiometer: "); Serial.println(pMax);
+  Serial.print("Pmin of potentiometer: "); Serial.println(pMin);
+  Serial.print("Value of potentiometer: "); Serial.println(potentReading(POTENTIOMETERINPUT));
+  Serial.println("");
+
+}
 //------------------------------------------------------------------------------------------------
 /**
    Testing and debugging for the BME680 breakout.
@@ -317,5 +344,5 @@ void testBME() {
   Serial.println(" m");
   Serial.println();
   delay(2000);
-  
+
 }//END testBME()
