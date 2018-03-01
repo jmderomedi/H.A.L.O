@@ -1,7 +1,7 @@
 /*
    Source code for data collection device
 
-   Last Updated: 2/27/2018
+   Last Updated: 2/28/2018
    By: James Deromedi
 */
 /*POSSIBLE IDEAS/TO DO
@@ -25,14 +25,14 @@
 #include <Wire.h>   //Needed to communicate between devices with I2C
 #include <SPI.h>    //Needed to communicate between device with SPI
 #include <Adafruit_BME680.h>
-#include <avr/sleep.h>
+#include <Snooze.h>
 
 const int BME680_SCK = 19;    //Pin for enviro sensor clock
 const int BME680_MOSI = 18;   //Pin for enviro sensor data transfer
 const int CHIPSELECT = 10;    //Pin for slave's chip
 const int SEALEVELPRESSURE_HPA = 1028.1;    //Sea level pressure at DCA on 2/27/17 at 4pm
 const int POTENTIOMETERINPUT = A9;   //Pin for timer changer
-const int pMin = 18;     //Min value of potentiometer (Might change with calibration method)
+const int pMin = 35;     //Min value of potentiometer (Might change with calibration method)
 const int pMax = 983;    //Max value of potentiometer(Might change with calibration method)
 
 char *eFileName = "eFile.txt";
@@ -47,31 +47,36 @@ int count = 0;//Debugging
 File gpsFile;
 File eFile;
 
+SnoozeDigital digital;
+SnoozeTimer timer;
+SnoozeBlock config(timer, digital);
+
 Adafruit_BME680 bme;
 
 //------------------------------------------------------------------------------------------------
 void setup() {
   /*Setup Serial to print out debug data
-    Comment out when done debugging*/
+    Comment out when done debugging
   Serial.begin (9600);
   while (!Serial) {
     delay(1);
-  }
+  }*/
+  
   /*Check if the envriomental card is plugged in*/
   if (!bme.begin()) {
-    Serial.println("Initialization of Enviromental card failed");
+    //Serial.println("Initialization of Enviromental card failed");
     //TODO: HAVE LED LIGHT UP
     return;
   } else {
-    Serial.println("No Error with BME680");
+    // Serial.println("No Error with BME680");
   }
   /*Check if the SD card is plugged in*/
   if (!SD.begin(CHIPSELECT)) {
-    Serial.println("Initialization of SD card failed");
+    // Serial.println("Initialization of SD card failed");
     //TODO: HAVE LED LIGHT UP
     return;
   } else {
-    Serial.println("No Error with SD");
+    // Serial.println("No Error with SD");
   }
 
   /*Setup oversampling and filter initialization*/
@@ -82,36 +87,32 @@ void setup() {
   bme.setGasHeater(320, 150);
 
   /*Pin setup for LEDS*/
-  configurePins();  //Sets all pins to output, expect ones in use
+  //configurePins();  //Sets all pins to output, expect ones in use
+  pinMode(led, OUTPUT);
 }//END setup()
 
 //------------------------------------------------------------------------------------------------
 void loop() {
-  unsigned long currentMillis = millis(); //Resets every loop for updated time
 
-  int potentiometerReading = potentReading(POTENTIOMETERINPUT);   //Reads in the input from potentiometer
+  timer.setTimer(potentReading(POTENTIOMETERINPUT));  //Sets the LPTMR to value of potentiometer
+  int who = Snooze.deepSleep(config);   //Sets the sleep conditions and puts the chip into deepSleep
+  digitalWrite(led, HIGH);//Debugging, see when the chip turn on and off
+  delay(500);
+  digitalWrite(led, LOW);
+  /*Read switch to check if driving or walking */
+  /* Uncomment after timer works properly */
+  if (isWalking) {
+    openSDCard(eFile, eFileName, 0);
+    eFile.println(getReadings());
+    closeSDCard(eFile);
+  }
+  if (!isWalking) {
+    openSDCard(gpsFile, gpsFileName, 1);
+    //Take/write gps data
+    closeSDCard(gpsFile);
+  }
 
-  if (currentMillis - dataTimer > potentiometerReading) {  //Checks to see if the potentiometerReading amount of time has passed
-    dataTimer = currentMillis;    //First reassign dataTimer
-    digitalWrite(led, HIGH);//Debugging
-    delay(500);//Keeping since the min time between important stuff is 60000 milliseconds
-    digitalWrite(led, LOW);//Debugging
-
-    /*Read switch to check if driving or walking */
-    /* Uncomment after timer works properly */
-      if (isWalking) {
-        openSDCard(eFile, eFileName, 0);
-        eFile.println(getReadings());
-        closeSDCard(eFile);
-        //count++;
-      }
-      if (!isWalking) {
-      openSDCard(gpsFile, gpsFileName, 1);
-      //Take/write gps data
-      closeSDCard(gpsFile);
-      }
-
-  }//END timer loop
+  //}//END timer loop
 }//END loop()
 
 //------------------------------------------------------------------------------------------------
@@ -124,9 +125,9 @@ void loop() {
 int potentReading(int inputPin) {
   int value = 0;
   value = analogRead(inputPin);  //Low 2 miliseconds - High 1023 miliseconds
-  //Serial.println(value);//Debugging
+  Serial.println(value);//Debugging
   value = (map(value, pMin, pMax, 6, 180));
-  //Serial.print((value * 10000)); Serial.println(" milliseconds");//Debugging
+  Serial.print((value * 10000)); Serial.println(" milliseconds");//Debugging
   value = value * 10000;
   return value;
 }//END potentReading()
@@ -148,7 +149,7 @@ void openSDCard(File file, char *fileName, int fileChoice) {
   } else if (fileChoice == 1) { //GPS data file
     gpsFile = file;
   } else {
-    Serial.println("NOOOOO PLEASE");
+    // Serial.println("NOOOOO PLEASE");
   }
   //Debugging
   //if (file) {
@@ -170,25 +171,25 @@ void closeSDCard(File file) {
 
 //------------------------------------------------------------------------------------------------
 /**
- * Power Saving
- * Setting all pins to output. Keep a list of all input LED pins in use
- * - Pin 23
- * @Param: None
- * @Return: None
- */
- void configurePins(){
-  for (int i = 0; i < 23; i++){
+   Power Saving
+   Setting all pins to output. Keep a list of all input LED pins in use
+   - Pin 23
+   @Param: None
+   @Return: None
+*/
+void configurePins() {
+  for (int i = 0; i < 23; i++) {
     pinMode(i, OUTPUT);
   }
- }//END configurePins
+}//END configurePins
 
- /**
-  * Power Saving
-  * Turns off ADC, turns off Serial, sleeps CPU when not needed
-  */
-  void powerSaving(){
-    
-  }
+/**
+   Power Saving
+   Turns off ADC, turns off Serial, sleeps CPU when not needed
+*/
+void powerSaving() {
+
+}
 //------------------------------------------------------------------------------------------------
 /**
    TODO: COUNTER TO KNOW WHICH READING WE ARE AT
@@ -202,7 +203,7 @@ void closeSDCard(File file) {
 String getReadings() {
   String concatString = "";
   if (! bme.performReading()) {
-    Serial.println("Failed to perform reading :(");
+    //  Serial.println("Failed to perform reading :(");
     //HAVE LED TURN-ON
     return "Error taking data";
   }
@@ -215,7 +216,7 @@ String getReadings() {
   concatString.concat(bme.gas_resistance / 1000.0);
   concatString.concat(",");
   concatString.concat(bme.readAltitude(SEALEVELPRESSURE_HPA));
-  Serial.println(concatString);//Debugging
+  // Serial.println(concatString);//Debugging
   return concatString;
 }//END getReadings()
 
