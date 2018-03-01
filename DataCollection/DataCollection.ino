@@ -40,8 +40,10 @@ char *gpsFileName = "GPSFile.txt";
 int dataTimer = 0;
 int ledTimer = 0;
 bool isWalking = true;    //Will be connected to a switch
+bool chipInserted;
 
 int led = 2;//Bound to change
+int chipInput = 4;
 int count = 0;//Debugging
 
 File gpsFile;
@@ -57,27 +59,32 @@ Adafruit_BME680 bme;
 void setup() {
   /*Setup Serial to print out debug data
     Comment out when done debugging
-  Serial.begin (9600);
-  while (!Serial) {
+    Serial.begin (9600);
+    while (!Serial) {
     delay(1);
-  }*/
-  
+    }*/
+
   /*Check if the envriomental card is plugged in*/
   if (!bme.begin()) {
     //Serial.println("Initialization of Enviromental card failed");
     //TODO: HAVE LED LIGHT UP
     return;
-  } else {
-    // Serial.println("No Error with BME680");
   }
+
   /*Check if the SD card is plugged in*/
-  if (!SD.begin(CHIPSELECT)) {
-    // Serial.println("Initialization of SD card failed");
-    //TODO: HAVE LED LIGHT UP
-    return;
+  if (digitalRead(chipInput)) {
+    SD.begin(CHIPSELECT);
+    chipInserted = true;
   } else {
-    // Serial.println("No Error with SD");
+    chipInserted = false;
   }
+
+  /*if (!SD.begin(CHIPSELECT)) {
+    // Serial.println("Initialization of SD card failed");
+    chipInserted = false;
+    } else {
+    chipInserted = true;
+    }*/
 
   /*Setup oversampling and filter initialization*/
   bme.setTemperatureOversampling(BME680_OS_8X);
@@ -87,8 +94,8 @@ void setup() {
   bme.setGasHeater(320, 150);
 
   /*Pin setup for LEDS*/
-  //configurePins();  //Sets all pins to output, expect ones in use
   pinMode(led, OUTPUT);
+  pinMode(chipInput, INPUT_PULLUP);
 }//END setup()
 
 //------------------------------------------------------------------------------------------------
@@ -96,6 +103,15 @@ void loop() {
 
   timer.setTimer(potentReading(POTENTIOMETERINPUT));  //Sets the LPTMR to value of potentiometer
   int who = Snooze.deepSleep(config);   //Sets the sleep conditions and puts the chip into deepSleep
+
+  if (!chipInserted) {
+    if (digitalRead(chipInput)) {
+      SD.begin(CHIPSELECT);
+      chipInserted = true;
+    }
+  }
+
+
   digitalWrite(led, HIGH);//Debugging, see when the chip turn on and off
   delay(500);
   digitalWrite(led, LOW);
@@ -128,7 +144,7 @@ int potentReading(int inputPin) {
   Serial.println(value);//Debugging
   value = (map(value, pMin, pMax, 6, 180));
   Serial.print((value * 10000)); Serial.println(" milliseconds");//Debugging
-  value = value * 10000;
+  value = value * 1000;
   return value;
 }//END potentReading()
 
@@ -169,27 +185,6 @@ void closeSDCard(File file) {
   file.close();
 }//END closeSDCard
 
-//------------------------------------------------------------------------------------------------
-/**
-   Power Saving
-   Setting all pins to output. Keep a list of all input LED pins in use
-   - Pin 23
-   @Param: None
-   @Return: None
-*/
-void configurePins() {
-  for (int i = 0; i < 23; i++) {
-    pinMode(i, OUTPUT);
-  }
-}//END configurePins
-
-/**
-   Power Saving
-   Turns off ADC, turns off Serial, sleeps CPU when not needed
-*/
-void powerSaving() {
-
-}
 //------------------------------------------------------------------------------------------------
 /**
    TODO: COUNTER TO KNOW WHICH READING WE ARE AT
