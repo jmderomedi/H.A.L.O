@@ -71,10 +71,10 @@ Adafruit_BME680 bme;                      //Instantiation of the environmental d
 //------------------------------------------------------------------------------------------------
 void setup() {
   //Comment out when done debugging
-  //  while (!Serial) {
-  //    delay(1);
-  //  }
-  //  Serial.begin (115200);
+  //    while (!Serial) {
+  //      delay(1);
+  //    }
+  //    Serial.begin (115200);
 
   /*Pin setup for LEDS*/
   pinMode(fixled, OUTPUT);
@@ -93,7 +93,7 @@ void setup() {
 
   /*Check if the envriomental card is plugged in*/
   if (!bme.begin()) {
-    //Nothing needed here
+    Serial.println("BME FAILED!!!");
     return;
   }
 
@@ -101,10 +101,13 @@ void setup() {
   if (!SD.begin(CHIPSELECT)) {
     digitalWrite(NOCHIPLED, HIGH);
     chipInitialized = false;
+    //Serial.println("SD CHIP FAILED!!! WHY?!?!?");
   } else {
     chipInitialized = true;
     digitalWrite(NOCHIPLED, LOW);
   }
+
+  //SD.remove(gpsFileName);
 
   /*Setup oversampling and filter initialization*/
   bme.setTemperatureOversampling(BME680_OS_8X);
@@ -138,12 +141,18 @@ void loop() {
     uint8_t maxWait = 2;
     if (GPS.waitForSentence(wait4Me, maxWait)) {    //Return true when sentence with wait4Me in it, checks twice
       gpsFile.println(GPS.lastNMEA());
+      if (!GPS.parse(GPS.lastNMEA())) {
+        return;
+      }
     }
+
     /*Environmental Data*/
     eFile.println(getReadings());   //Write data taken
 
+
   }//END if(chipInitialized)
 
+  //Serial.println("SD CARDS CLOSED");
   closeSDCard(eFile);   //Close enviromental file
   closeSDCard(gpsFile);   //close gps file
 
@@ -170,7 +179,7 @@ void loop() {
 void sdChipInit() {
   if (digitalRead(CHIPINPUT) == HIGH && chipInitialized == false) {   //If chip is plugged in and it not initialized
     if (!SD.begin(CHIPSELECT)) { //Initalize the 'new' chip
-      Serial.println("Failed SD.begin, inside sdChipInit()");
+      //Serial.println("Failed SD.begin, inside sdChipInit()");
     }
     chipInitialized = true;   //Set chipInitialized to now true
     digitalWrite(NOCHIPLED, LOW);   //Turns off LED
@@ -195,6 +204,7 @@ void sdChipInit() {
    @Return: None
 */
 void calibration() {
+  //Serial.println("CALIBRATION STARTED");
   int calibrationTime = 5000;    //Have 5 seconds to calibrate once the light appears
   int temp = 0;
   unsigned long currentMillis = millis();
@@ -214,7 +224,7 @@ void calibration() {
 
   digitalWrite(CALIBRATELED, LOW);    //Turns off led; Signaling calibration is complete
   calibrateFlag = true;   //Set flag so calibration() can only happen once
-
+  Serial.println("CALIBRATION STARTED");
 }//END calibration()
 
 //------------------------------------------------------------------------------------------------
@@ -224,11 +234,11 @@ void calibration() {
    @Param: inputPin - int; Pin attached the potentiometer
    @Return: value - int; Mapped value of the potentiometer in milliseconds
 */
-int potentReading(int inputPin) {
+int potentReading(int inputPin) {get
   int value = 0;
   value = analogRead(inputPin);  //Raw value of potentiometer reading
   value = (map(value, pMin, pMax, 6, 180));   //Remaps the raw data to min and max of calibration
-  value = value * 100;    //TODO: Change back to '10000' when done;
+  value = value * 1000;    //TODO: Change back to '10000' when done;
   return value;
 
 }//END potentReading()
@@ -272,16 +282,21 @@ void closeSDCard(File file) {
        : Steal GPS' time stamp
        : Have driving data be only pressure and alititude
    Takes the environmental data and places it in a string with commas seperating the data
-   Tempature(*C), Barometric Pressure (in/Mg), Humidity(%), Gas/VOC(KOhms), Altitude(m)
+   Time (h:m:s), Tempature(*C), Barometric Pressure (in/Mg), Humidity(%), Gas/VOC(KOhms), Altitude(m)
    @Param: None
    @Return concatString - String; Contains all the data in the above order
 */
 String getReadings() {
   String concatString = "";
   if (! bme.performReading()) {
-    //TODO: HAVE LED TURN-ON
-    return "Error Getting Environmental Data";
+    return "00:00:00, 0.0, 0.0, 0.0, 0.0, 0.0";
   }
+  concatString.concat(GPS.hour);
+  concatString.concat(":");
+  concatString.concat(GPS.minute);
+  concatString.concat(":");
+  concatString.concat(GPS.seconds);
+  concatString.concat(", ");
   concatString.concat(bme.temperature);
   concatString.concat(", ");
   concatString.concat(bme.pressure / 3386.39);
