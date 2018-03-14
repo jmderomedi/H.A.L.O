@@ -1,27 +1,16 @@
 /*
    Source code for data collection device
 
-   Last Updated: 3/7/2018
+   Last Updated: 3/13/2018
    By: James Deromedi
 */
-/*POSSIBLE IDEAS/TO DO
-   Have switch that sets 'driving' or 'outside' driving: Some enviromental data, since inside car walking: Enviromental data since outside
-   Have LED when GPS has a fix -DONE
-   Have LED when device takes data - DONE
-   Have timer set on a turn knob, so you can change it on the fly - DONE
-   Setup SD card to create two different files (GPS/Enviro) - DONE
-   Create a calibration method for the potentiometer (min and max values change sometimes) for map() to be correct -DONE
+/*TO DO
    Have small display to show what the timer is at in minutes
-   Cut +5V trace on back of board to prevent power lose from unused USB port
    Add two 1N5817 Diodes, this will prevent drain on batteries when plugged in from USB
-   Power Stuff - DONE
-      Low Power Timer -DONE
    Watchdog Timer, incase of system failure
    Clean up code
       -Capital letters
-      -Check comments-DONE
-      -Clear out unused items-DONE
-   Have SD be able to be pulled out and put back in without power cycling or error writing - DONE
+      -Clear out unused items
 */
 
 #include <Wire.h>                         //Library for teensy to communicate to a device with I2C
@@ -50,16 +39,11 @@ int pMax = 0;                             //Settng original Max low so it can be
 char *eFileName = "eFile.txt";            //List of chars for environmental file name
 char *gpsFileName = "GPSFile.txt";        //List of chars for gps file name
 
-bool isWalking = true;                    //TODO: connect to a switch;
 bool chipInitialized;                     //Flag for if the SD card is initialized or not
-bool previousChipState = false;           //Flag for last initialization state the SD card was in
 bool calibrateFlag = false;               //Flag for calibration of potentiometer
-bool gpsInitialized;                      //Flag for resetting GPSSerial
 
 File gpsFile;                             //Where all gps data will be written to
 File eFile;                               //Where all environmental data will be written to
-
-int fixled = 22;
 
 SnoozeDigital digital;                    //Driver for the teensy chip to be put asleep
 SnoozeTimer timer;                        //Wakeup driver method for the teensy chip
@@ -77,7 +61,6 @@ void setup() {
   //    Serial.begin (115200);
 
   /*Pin setup for LEDS*/
-  pinMode(fixled, OUTPUT);
   pinMode(DATACOLLECTEDLED, OUTPUT);
   pinMode(CALIBRATELED, OUTPUT);
   pinMode(CHIPINPUT, INPUT_PULLUP);   //Used to know when a SD in plugged into the device
@@ -88,14 +71,8 @@ void setup() {
   GPS.begin(9600);
   GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);    //Setting gps to give GMRMC NMEA lines
   GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);    //Set how quickly the GPS takes data
-  delay(1000);    //Needed for GPS module to set itself up
-  GPSSerial.println(PMTK_Q_RELEASE);    //NEEDED?; Ask for firmware version
-
-  /*Check if the envriomental card is plugged in*/
-  if (!bme.begin()) {
-    Serial.println("BME FAILED!!!");
-    return;
-  }
+  delay(1000);    //Needed for GPS set up without interuptions
+  GPSSerial.println(PMTK_Q_RELEASE);    //Ask for firmware version
 
   /*Check if the SD card is plugged in, if not set flag to false, if it is set initalize and set flag*/
   if (!SD.begin(CHIPSELECT)) {
@@ -107,7 +84,9 @@ void setup() {
     digitalWrite(NOCHIPLED, LOW);
   }
 
-  //SD.remove(gpsFileName);
+  if (!bme.begin()) {
+    //Nope
+  }
 
   /*Setup oversampling and filter initialization*/
   bme.setTemperatureOversampling(BME680_OS_8X);
@@ -136,23 +115,23 @@ void loop() {
 
   if (chipInitialized) {
     /*GPS Data
-      FUCK, this next little bit, these three lines gave me nightmares!
+      FUCK, this next little bit, these next lines gave me nightmares!
     */
-    uint8_t maxWait = 2;
-    if (GPS.waitForSentence(wait4Me, maxWait)) {    //Return true when sentence with wait4Me in it, checks twice
+    uint8_t maxWait = 20;
+    if (GPS.waitForSentence(wait4Me, maxWait)) {    //Return true when sentence with wait4Me in it, checks 20 times
       gpsFile.println(GPS.lastNMEA());
       if (!GPS.parse(GPS.lastNMEA())) {
         return;
       }
+    } else {
+      gpsFile.println("Error");
     }
 
     /*Environmental Data*/
     eFile.println(getReadings());   //Write data taken
 
-
   }//END if(chipInitialized)
 
-  //Serial.println("SD CARDS CLOSED");
   closeSDCard(eFile);   //Close enviromental file
   closeSDCard(gpsFile);   //close gps file
 
@@ -161,6 +140,7 @@ void loop() {
 
   /* Gets time between readings/wake ups and puts the device asleep for that time
        uses Low Power Timer to keep track of milliseconds that have passed */
+
   timer.setTimer(potentReading(POTENTIOMETERINPUT));
   int who = Snooze.deepSleep(config);
 
@@ -224,7 +204,7 @@ void calibration() {
 
   digitalWrite(CALIBRATELED, LOW);    //Turns off led; Signaling calibration is complete
   calibrateFlag = true;   //Set flag so calibration() can only happen once
-  Serial.println("CALIBRATION STARTED");
+
 }//END calibration()
 
 //------------------------------------------------------------------------------------------------
@@ -234,7 +214,7 @@ void calibration() {
    @Param: inputPin - int; Pin attached the potentiometer
    @Return: value - int; Mapped value of the potentiometer in milliseconds
 */
-int potentReading(int inputPin) {get
+int potentReading(int inputPin) {
   int value = 0;
   value = analogRead(inputPin);  //Raw value of potentiometer reading
   value = (map(value, pMin, pMax, 6, 180));   //Remaps the raw data to min and max of calibration
